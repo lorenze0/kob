@@ -8,8 +8,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-@RestController
-@RequestMapping("/pk/")
+@RestController                 /**/
+@RequestMapping("/pk/")      /*父目录加上一个request mapping*/
 public class BotInfoController {
     @RequestMapping("getbotinfo/")
     public Map<String,String> getBotInfo(){
