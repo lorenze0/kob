@@ -1,6 +1,6 @@
 import { LrzGameObject } from "./LrzGameObject"; //js中当import的是export的话import需要括号，若是export default的话就不用括号，每个文件只能export default一个文件，类似于java里面每个文件只能有一个default
-
 import { Wall } from "./Wall";
+import { Snake } from "./Snake";
 
 export class GameMap extends LrzGameObject {
     constructor(ctx, parent) {  //传一个画布和画布的父元素，用来动态构造画布元素的长宽
@@ -10,12 +10,18 @@ export class GameMap extends LrzGameObject {
         this.parent = parent;
         this.L = 0;
 
-        //行数和列数13 * 13 的
+        //行数和列数13 * 14 的
         this.rows = 13;
-        this.cols = 13;
+        this.cols = 14; //这样初始的时候，两个蛇的初始坐标一个为奇数一个为偶数，这样就一定不会重合了，此时地图是中心对称的
         
         this.inner_walls_count = 20;//存储内部障碍物的数量
         this.walls = []; //开个数组用来存储所有的墙
+       
+        this.snakes = [
+            new Snake({id: 0, color: "#4876EC", r: this.rows - 2, c: 1}, this),
+            new Snake({id: 1, color: "#F94848", r: 1, c: this.cols - 2}, this),
+        ];
+
     }
 
     //flood fill算法来判断当前是否连通
@@ -51,16 +57,16 @@ export class GameMap extends LrzGameObject {
             g[0][c] = g[this.rows - 1][c] = true;
         }
 
-        // 创建随机障碍物，因为是对称的，只要   
+        // 创建随机障碍物，因为是中心对称的，只要   
         for (let i = 0; i < this.inner_walls_count / 2; i ++ ) {
             for (let j = 0; j < 5000; j ++ ) {              //随机一个位置，为了防止重复所以采取了5000，这里有11*11=121个空位，所以随机121次以上总会有结果的
                 let r = parseInt(Math.random() * this.rows);//parseInt是为了把单位之间的距离取成整像素，避免墙之间产生缝隙
                 let c = parseInt(Math.random() * this.cols);
-                if (g[r][c] || g[c][r]) continue;         //判断一下是否有障碍物
-                if (r == this.rows - 2 && c == 1 || r == 1 && c == this.cols - 2)//防止左下角和右上角的起始位置被墙覆盖。
-                    continue;
-
-                g[r][c] = g[c][r] = true;
+                if (g[r][c] || g[this.rows - 1 - r][this.cols - 1 - c]) continue;         //判断一下是否有障碍物
+                if (r == this.rows - 2 && c == 1 || r == 1 && c == this.cols - 2)
+                continue;
+                
+                g[r][c] = g[this.rows - 1 - r][this.cols - 1 - c] = true;//防止左下角和右上角的起始位置被墙覆盖。
                 break;
             }
         }
@@ -81,11 +87,30 @@ export class GameMap extends LrzGameObject {
         return true;
     }
 
+    add_listening_events() {
+        this.ctx.canvas.focus();
+
+        const [snake0, snake1] = this.snakes;
+        this.ctx.canvas.addEventListener("keydown", e => {
+            if (e.key === 'w') snake0.set_direction(0);
+            else if (e.key === 'd') snake0.set_direction(1);
+            else if (e.key === 's') snake0.set_direction(2);
+            else if (e.key === 'a') snake0.set_direction(3);
+            else if (e.key === 'ArrowUp') snake1.set_direction(0);
+            else if (e.key === 'ArrowRight') snake1.set_direction(1);
+            else if (e.key === 'ArrowDown') snake1.set_direction(2);
+            else if (e.key === 'ArrowLeft') snake1.set_direction(3);
+        });
+    }
+
+
     //只执行一次
     start() {
         for (let i = 0; i < 1000; i ++ ) 
             if (this.create_walls())
                 break;
+
+                this.add_listening_events();
     }
 
     
@@ -95,11 +120,51 @@ export class GameMap extends LrzGameObject {
         this.ctx.canvas.height = this.L * this.rows;
     }
 
+    check_ready() {  // 判断两条蛇是否都准备好下一回合了
+        for (const snake of this.snakes) {
+            if (snake.status !== "idle") return false;
+            if (snake.direction === -1) return false;
+        }
+        return true;
+    }
+
+    next_step() {  // 让两条蛇进入下一回合
+        for (const snake of this.snakes) {
+            snake.next_step();
+        }
+    }
+
+    check_valid(cell) {  // 检测目标位置是否合法：没有撞到两条蛇的身体和障碍物
+        for (const wall of this.walls) {
+            if (wall.r === cell.r && wall.c === cell.c)  //判断非法与否
+                return false;
+        }
+
+        //判断两个蛇是否碰到
+        for (const snake of this.snakes) {
+            let k = snake.cells.length;  //取出整个蛇的长度 
+            if (!snake.check_tail_increasing()) {  // 当蛇尾会向前进的时候，蛇尾可以走
+                k -- ;
+            }
+            for (let i = 0; i < k; i ++ ) {
+                if (snake.cells[i].r === cell.r && snake.cells[i].c === cell.c)  //如果撞了的话return false
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+
     //每一帧执行一次
     update() {
         this.update_size();
+        if (this.check_ready()) {
+            this.next_step();
+        }
         this.render();
     }
+
 
     //渲染，即把当前的地图画出来，采用现成的API
     render() {
